@@ -7,3 +7,6 @@ python-dotenv
 pillow
 numpy
 pandas
+fastapi
+uvicorn
+python-multipart

@@ -1,0 +1,26 @@
+# Node dependencies
+node_modules/
+frontend/node_modules/
+
+# Production builds
+dist/
+frontend/dist/
+
+# Python caching & build
+__pycache__/
+*.pyc
+backend/data/
+backend/__pycache__/
+backend/ingestion/__pycache__/
+backend/indexer/__pycache__/
+backend/retrieval/__pycache__/
+backend/data/images/
+backend/data/cache/
+backend/data/temp/
+
+# Environment and local files
+.env
+temp.pdf
+.DS_Store
+.idea/
+.vscode/
