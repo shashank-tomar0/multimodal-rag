@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Form, Header, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -7,12 +7,18 @@ import shutil
 import json
 import uvicorn
 from typing import Optional, List
+from concurrent.futures import ThreadPoolExecutor
+from dotenv import load_dotenv
 
 from ingestion.pdf_parser import parse_complex_pdf, get_pdf_hash
 from indexer.multimodal_embedder import MultimodalEmbedder
 from retrieval.query_engine import MultimodalQueryEngine
 
-app = FastAPI(title="Agenta Multimodal RAG Backend")
+# Load environment variables (reads from .env if present)
+load_dotenv()
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+
+app = FastAPI(title="Lumen RAG Backend")
 
 # Enable CORS for frontend requests
 app.add_middleware(
@@ -37,7 +43,7 @@ os.makedirs(TEMP_DIR, exist_ok=True)
 # Mount images directory to serve files to frontend
 app.mount("/images", StaticFiles(directory=IMAGES_DIR), name="images")
 
-# Load or maintain database registry
+# Load or maintain registry
 REGISTRY_PATH = os.path.join(CACHE_DIR, "registry.json")
 
 def load_registry():
@@ -55,14 +61,12 @@ def save_registry(registry):
 
 class QueryRequest(BaseModel):
     question: str
-    groq_api_key: str
     pdf_hash: str
     top_k: Optional[int] = 4
 
 @app.post("/api/upload")
 async def upload_pdf(
     file: UploadFile = File(...),
-    groq_api_key: Optional[str] = Form(None),
     enable_captioning: bool = Form(True),
     chunk_size: int = Form(800),
     chunk_overlap: int = Form(200)
@@ -83,7 +87,6 @@ async def upload_pdf(
         # Check cache
         if pdf_hash in registry and embedder.load_index(CACHE_DIR, pdf_hash):
             print(f"Cache hit for PDF hash: {pdf_hash}")
-            # Clean up temp file
             if os.path.exists(temp_path):
                 os.remove(temp_path)
             return {
@@ -91,10 +94,11 @@ async def upload_pdf(
                 "filename": registry[pdf_hash]["filename"],
                 "text_chunks_count": registry[pdf_hash]["text_chunks_count"],
                 "images_count": registry[pdf_hash]["images_count"],
+                "image_chunks": registry[pdf_hash].get("image_chunks", []),
                 "cached": True
             }
             
-        # If not cached, process PDF
+        # Parse PDF
         parsed_data = parse_complex_pdf(
             temp_path, 
             output_base_dir=IMAGES_DIR, 
@@ -106,35 +110,55 @@ async def upload_pdf(
         extracted_images = parsed_data["images"]
         image_chunks = []
         
-        # Handle Image Captioning
+        # Handle Image Captioning Concurrently
         if extracted_images and enable_captioning:
-            if not groq_api_key:
-                # API Key check is only required if image captioning is enabled
-                raise HTTPException(
-                    status_code=400, 
-                    detail="Groq API Key is required for generating visual captions for images."
-                )
+            if not GROQ_API_KEY:
+                print("Warning: GROQ_API_KEY environment variable not configured. Skipping image captioning.")
+                for img in extracted_images:
+                    image_chunks.append({
+                        "page": img["page"],
+                        "path": img["path"],
+                        "caption": f"Image extracted from page {img['page']}."
+                    })
+            else:
+                query_engine = MultimodalQueryEngine(api_key=GROQ_API_KEY)
                 
-            query_engine = MultimodalQueryEngine(api_key=groq_api_key)
-            for img in extracted_images:
-                caption = query_engine.generate_image_caption(img["path"])
-                image_chunks.append({
-                    "page": img["page"],
-                    "path": img["path"],
-                    "caption": caption
-                })
+                # Define worker for parallel captioning
+                def caption_worker(img):
+                    try:
+                        caption = query_engine.generate_image_caption(img["path"])
+                        return {
+                            "page": img["page"],
+                            "path": img["path"],
+                            "caption": caption
+                        }
+                    except Exception as e:
+                        print(f"Error captioning image {img['path']}: {e}")
+                        return {
+                            "page": img["page"],
+                            "path": img["path"],
+                            "caption": f"Image on page {img['page']}."
+                        }
+                
+                # Execute in parallel
+                with ThreadPoolExecutor(max_workers=4) as executor:
+                    image_chunks = list(executor.map(caption_worker, extracted_images))
         else:
-            # Create default empty captions if disabled
             for img in extracted_images:
                 image_chunks.append({
                     "page": img["page"],
                     "path": img["path"],
-                    "caption": f"Image extracted from page {img['page']} of {file.filename}."
+                    "caption": f"Image extracted from page {img['page']}."
                 })
                 
-        # Build Vector Index
+        # Build FAISS vector index
         embedder.build_index(text_chunks, image_chunks)
         embedder.save_index(CACHE_DIR, pdf_hash)
+        
+        # Format registry image chunks relative to static folder if needed
+        # We store the image name so frontend can load it easily
+        for chunk in image_chunks:
+            chunk["name"] = os.path.basename(chunk["path"])
         
         # Update registry
         registry[pdf_hash] = {
@@ -145,7 +169,6 @@ async def upload_pdf(
         }
         save_registry(registry)
         
-        # Clean up temp file
         if os.path.exists(temp_path):
             os.remove(temp_path)
             
@@ -154,13 +177,14 @@ async def upload_pdf(
             "filename": file.filename,
             "text_chunks_count": len(text_chunks),
             "images_count": len(extracted_images),
+            "image_chunks": image_chunks,
             "cached": False
         }
         
     except Exception as e:
         if os.path.exists(temp_path):
             os.remove(temp_path)
-        print(f"Error during upload & index: {e}")
+        print(f"Error during upload: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/query")
@@ -173,15 +197,14 @@ async def query_rag(request: QueryRequest):
         
     # Load index
     if not embedder.load_index(CACHE_DIR, request.pdf_hash):
-        raise HTTPException(status_code=500, detail="Failed to load document index from cache.")
+        raise HTTPException(status_code=500, detail="Failed to load document index.")
         
-    # Query FAISS
+    # Search
     search_results = embedder.search(request.question, top_k=request.top_k)
     
     retrieved_texts = []
     retrieved_images = []
     
-    # Process search results
     for res in search_results:
         if res["type"] == "text":
             retrieved_texts.append({
@@ -197,34 +220,36 @@ async def query_rag(request: QueryRequest):
                 "score": res["score"]
             })
             
-    # Fallback/Supplemental image retrieval: If no images were directly retrieved semantically,
-    # let's grab the images on the pages of the top text results to make sure we don't miss anything.
+    # Page-match fallback for images
     if len(retrieved_images) < 2 and retrieved_texts:
         top_pages = [t["page"] for t in retrieved_texts[:2]]
         image_chunks = registry[request.pdf_hash].get("image_chunks", [])
         
         for img in image_chunks:
             if img["page"] in top_pages:
-                # Avoid duplicates
                 if not any(r_img["path"] == img["path"] for r_img in retrieved_images):
                     retrieved_images.append({
                         "page": img["page"],
                         "path": img["path"],
                         "caption": img.get("caption", ""),
-                        "score": 9.99  # indicate page-match fallback
+                        "score": 9.99
                     })
                     
-    # Limit to top 2-3 images for model context efficiency
     retrieved_images = retrieved_images[:3]
     
-    # Query VLM
-    query_engine = MultimodalQueryEngine(api_key=request.groq_api_key)
+    # Query VLM using server's API key
+    if not GROQ_API_KEY:
+        raise HTTPException(
+            status_code=500, 
+            detail="GROQ_API_KEY environment variable is not configured on the server."
+        )
+        
+    query_engine = MultimodalQueryEngine(api_key=GROQ_API_KEY)
     answer = query_engine.query(request.question, retrieved_texts, retrieved_images)
     
-    # Format image paths into static URLs for the frontend
+    # Format paths
     formatted_images = []
     for img in retrieved_images:
-        # Get relative path from IMAGES_DIR to construct URL
         rel_path = os.path.relpath(img["path"], IMAGES_DIR)
         rel_path = rel_path.replace(os.path.sep, "/")
         formatted_images.append({
@@ -248,7 +273,8 @@ async def get_documents():
             "pdf_hash": pdf_hash,
             "filename": info["filename"],
             "text_chunks_count": info["text_chunks_count"],
-            "images_count": info["images_count"]
+            "images_count": info["images_count"],
+            "image_chunks": info.get("image_chunks", [])
         })
     return docs
 
@@ -258,13 +284,11 @@ async def clear_cache():
         if os.path.exists(CACHE_DIR):
             shutil.rmtree(CACHE_DIR)
             os.makedirs(CACHE_DIR, exist_ok=True)
-            
         if os.path.exists(IMAGES_DIR):
             shutil.rmtree(IMAGES_DIR)
             os.makedirs(IMAGES_DIR, exist_ok=True)
-            
         save_registry({})
-        return {"status": "success", "message": "Cache and registry cleared successfully."}
+        return {"status": "success", "message": "Cache cleared."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
