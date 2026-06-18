@@ -18,7 +18,7 @@ import neuralCalibration from './assets/neural_calibration.png'
 import augmentCapabilities from './assets/augment_capabilities.png'
 import syncEvolve from './assets/sync_evolve.png'
 
-const BACKEND_URL = 'http://localhost:8000';
+const BACKEND_URL = 'http://127.0.0.1:8000';
 
 export default function App() {
   const [view, setView] = useState('landing') // 'landing' or 'dashboard'
