@@ -43,6 +43,7 @@ class MultimodalQueryEngine:
                 messages=messages,
                 temperature=0.2,
                 max_tokens=512,
+                timeout=25.0,
             )
             caption = response.choices[0].message.content.strip()
             print(f"Generated caption length: {len(caption)}")
@@ -92,6 +93,7 @@ class MultimodalQueryEngine:
                 messages=messages,
                 temperature=0.2,
                 max_tokens=1024,
+                timeout=30.0,
             )
             return response.choices[0].message.content
         except Exception as e:
