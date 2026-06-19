@@ -13,8 +13,8 @@ class MultimodalEmbedder:
         self.index = None
         self.metadata = []
 
-        # Read environment variable to force TF-IDF and save memory on free tier (defaults to false locally)
-        force_tfidf = os.getenv("USE_TFIDF_ONLY", "false").lower() == "true"
+        # Read environment variable to force TF-IDF and save memory on free tier (defaults to true for maximum reliability)
+        force_tfidf = os.getenv("USE_TFIDF_ONLY", "true").lower() == "true"
 
         print("Initializing Embedder model...")
         if force_tfidf:

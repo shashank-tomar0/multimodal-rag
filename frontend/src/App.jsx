@@ -94,7 +94,7 @@ export default function App() {
       }
     } catch (err) {
       console.error(err)
-      alert("Error contacting indexing server.")
+      alert(`Error contacting indexing server at ${BACKEND_URL}/api/upload. Details: ${err.message || err}`)
     } finally {
       setUploading(false)
       setUploadProgress('')
