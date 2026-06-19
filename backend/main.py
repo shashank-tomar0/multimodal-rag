@@ -1,21 +1,25 @@
+import os
+# Force offline mode for Hugging Face to avoid network hangs in restricted environments
+os.environ["HF_HUB_OFFLINE"] = "1"
+os.environ["TRANSFORMERS_OFFLINE"] = "1"
+
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-import os
 import shutil
 import json
 import uvicorn
 from typing import Optional, List
 from concurrent.futures import ThreadPoolExecutor
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 
 from ingestion.pdf_parser import parse_complex_pdf, get_pdf_hash
 from indexer.multimodal_embedder import MultimodalEmbedder
 from retrieval.query_engine import MultimodalQueryEngine
 
-# Load environment variables (reads from .env if present)
-load_dotenv()
+# Load environment variables (reads from .env if present in root or backend/)
+load_dotenv(find_dotenv())
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
 app = FastAPI(title="Lumen RAG Backend")
