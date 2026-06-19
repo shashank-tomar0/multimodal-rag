@@ -3,8 +3,10 @@ services:
     name: lumen-rag-backend
     runtime: python
     rootDirectory: backend
-    buildCommand: pip install -r requirements.txt
+    buildCommand: grep -v "sentence-transformers" requirements.txt > requirements-prod.txt && pip install -r requirements-prod.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: GROQ_API_KEY
         sync: false
+      - key: USE_TFIDF_ONLY
+        value: "true"

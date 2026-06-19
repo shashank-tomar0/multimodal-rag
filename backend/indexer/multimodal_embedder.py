@@ -1,4 +1,3 @@
-from sentence_transformers import SentenceTransformer
 import faiss
 import numpy as np
 import os
@@ -14,18 +13,27 @@ class MultimodalEmbedder:
         self.index = None
         self.metadata = []
 
+        # Read environment variable to force TF-IDF and save memory on free tier (defaults to false locally)
+        force_tfidf = os.getenv("USE_TFIDF_ONLY", "false").lower() == "true"
+
         print("Initializing Embedder model...")
-        try:
-            # Attempt to load local SentenceTransformer model
-            self.model = SentenceTransformer('all-MiniLM-L6-v2')
-            self.dimension = self.model.get_sentence_embedding_dimension()
-            self.index = faiss.IndexFlatL2(self.dimension)
-            print("Successfully loaded SentenceTransformer model ('all-MiniLM-L6-v2').")
-        except Exception as e:
-            print(f"HuggingFace loading failed: {e}")
-            print("HuggingFace model not found or offline. Falling back to local TF-IDF Vectorizer.")
+        if force_tfidf:
+            print("USE_TFIDF_ONLY=true. Skipping SentenceTransformer loading to conserve memory.")
             self.use_fallback = True
             self.vectorizer = TfidfVectorizer(stop_words='english')
+        else:
+            try:
+                # Attempt to load local SentenceTransformer model dynamically
+                from sentence_transformers import SentenceTransformer
+                self.model = SentenceTransformer('all-MiniLM-L6-v2')
+                self.dimension = self.model.get_sentence_embedding_dimension()
+                self.index = faiss.IndexFlatL2(self.dimension)
+                print("Successfully loaded SentenceTransformer model ('all-MiniLM-L6-v2').")
+            except Exception as e:
+                print(f"HuggingFace loading failed: {e}")
+                print("HuggingFace model not found or offline. Falling back to local TF-IDF Vectorizer.")
+                self.use_fallback = True
+                self.vectorizer = TfidfVectorizer(stop_words='english')
             # The dimension and index will be initialized dynamically in build_index based on vocabulary size
 
     def build_index(self, text_chunks, image_chunks):
