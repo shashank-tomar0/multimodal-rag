@@ -116,7 +116,9 @@ async def upload_pdf(
         
         # Handle Image Captioning Concurrently
         if extracted_images and enable_captioning:
-            if not GROQ_API_KEY:
+            load_dotenv(find_dotenv())
+            current_api_key = os.getenv("GROQ_API_KEY", "") or GROQ_API_KEY
+            if not current_api_key:
                 print("Warning: GROQ_API_KEY environment variable not configured. Skipping image captioning.")
                 for img in extracted_images:
                     image_chunks.append({
@@ -125,7 +127,7 @@ async def upload_pdf(
                         "caption": f"Image extracted from page {img['page']}."
                     })
             else:
-                query_engine = MultimodalQueryEngine(api_key=GROQ_API_KEY)
+                query_engine = MultimodalQueryEngine(api_key=current_api_key)
                 
                 # Define worker for parallel captioning
                 def caption_worker(img):
@@ -242,13 +244,15 @@ async def query_rag(request: QueryRequest):
     retrieved_images = retrieved_images[:3]
     
     # Query VLM using server's API key
-    if not GROQ_API_KEY:
+    load_dotenv(find_dotenv())
+    current_api_key = os.getenv("GROQ_API_KEY", "") or GROQ_API_KEY
+    if not current_api_key:
         raise HTTPException(
             status_code=500, 
             detail="GROQ_API_KEY environment variable is not configured on the server."
         )
         
-    query_engine = MultimodalQueryEngine(api_key=GROQ_API_KEY)
+    query_engine = MultimodalQueryEngine(api_key=current_api_key)
     answer = query_engine.query(request.question, retrieved_texts, retrieved_images)
     
     # Format paths
