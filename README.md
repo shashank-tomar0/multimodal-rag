@@ -19,7 +19,7 @@ The project is split into a proper decoupled client-server architecture:
 2. **Backend (FastAPI + Python)**
    - Exposes REST endpoints to query and upload documents.
    - Performs PDF layout analysis, extracts overlapping semantic text chunks, and extracts images per page.
-   - Integrates **AI Image Captioning**: during ingestion, each image is automatically analyzed by Groq VLM (`llama-3.2-11b-vision-preview`) to generate a semantic summary (e.g. describing charts and tables) which is then embedded and indexed.
+   - Integrates **AI Image Captioning**: during ingestion, each image is automatically analyzed by Groq VLM (`meta-llama/llama-4-scout-17b-16e-instruct`) to generate a semantic summary (e.g. describing charts and tables) which is then embedded and indexed.
    - **True Multimodal Search**: Indexes both text content and image captions in a FAISS vector database. Queries retrieve text and visual evidence concurrently based on query similarity.
    - **Local Caching & Hashing**: Computes SHA256 hashes of PDF contents. Pre-processed indices and image libraries are saved locally so re-uploading or restarting loads them instantly.
 
@@ -57,7 +57,7 @@ multimodal-rag/
 
 ### Prerequisite
 * Make sure you have **Node.js (v18+)** and **Python (3.9+)** installed.
-* Get your Groq API Key (required to access `llama-3.2-11b-vision-preview`).
+* Get your Groq API Key (required to access `meta-llama/llama-4-scout-17b-16e-instruct`).
 
 ### 1. One-Time Setup (Install Dependencies)
 Run the following script at the root directory to install both frontend and backend dependencies:

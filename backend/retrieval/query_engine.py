@@ -9,7 +9,7 @@ def encode_image(image_path):
 class MultimodalQueryEngine:
     def __init__(self, api_key: str):
         self.client = Groq(api_key=api_key)
-        self.model_name = "llama-3.2-11b-vision-preview" 
+        self.model_name = "meta-llama/llama-4-scout-17b-16e-instruct" 
 
     def generate_image_caption(self, image_path: str) -> str:
         """Generates a detailed summary of an image using Groq VLM."""
