@@ -18,7 +18,8 @@ import neuralCalibration from './assets/neural_calibration.png'
 import augmentCapabilities from './assets/augment_capabilities.png'
 import syncEvolve from './assets/sync_evolve.png'
 
-const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+const rawBackendUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+const BACKEND_URL = rawBackendUrl.endsWith('/') ? rawBackendUrl.slice(0, -1) : rawBackendUrl;
 
 export default function App() {
   const [view, setView] = useState('landing') // 'landing' or 'dashboard'
